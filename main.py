@@ -11,7 +11,22 @@ app = FastAPI(
     version="0.1.0",
 )
 
-rag_service = RagService(data_dir="data")
+# Lazy init (avoid heavy indexing at import time)
+_rag_service: Optional[RagService] = None
+
+
+def get_rag_service() -> RagService:
+    """
+    Create RagService on first request.
+    This avoids failing the container startup due to:
+    - missing env vars (OPENAI_API_KEY / base url)
+    - slow PDF loading/embedding/indexing
+    - write permission issues when saving FAISS index
+    """
+    global _rag_service
+    if _rag_service is None:
+        _rag_service = RagService(data_dir="data")
+    return _rag_service
 
 
 class RagRequest(BaseModel):
@@ -45,6 +60,8 @@ async def rag(req: RagRequest) -> RagResponse:
     - top_k: number of retrieved chunks
     - metadata_filter: optional filter passed to the vector store
     """
+    rag_service = get_rag_service()
+
     result = rag_service.query(
         question=req.question,
         k=req.top_k,
@@ -63,4 +80,3 @@ async def rag(req: RagRequest) -> RagResponse:
     ]
 
     return RagResponse(answer=answer, sources=sources)
-

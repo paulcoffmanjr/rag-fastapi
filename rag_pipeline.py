@@ -35,13 +35,29 @@ class RagService:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
+        # ---- Minimal changes start ----
+        # TrueFoundry Gateway (OpenAI-compatible) URL
+        # Prefer OPENAI_BASE_URL (standard), but also support your LLM_GATEWAY_URL
+        base_url = os.getenv("OPENAI_BASE_URL") or os.getenv("LLM_GATEWAY_URL")
+
+        # Chat model name
+        # Prefer CHAT_MODEL (what your original code used), but also support LLM_MODEL_LANGCHAIN
+        chat_model = os.getenv("CHAT_MODEL") or os.getenv("LLM_MODEL_LANGCHAIN", "gpt-4.1-mini")
+
+        # Embedding model name (same as your original)
+        embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-large")
+        # ---- Minimal changes end ----
+
         # Embeddings / LLM は TrueFoundry Gateway 経由の OpenAI 互換 API を想定
+        # NOTE: OPENAI_API_KEY must be present (Gateway key or OpenAI key depending on your setup)
         self.embeddings = OpenAIEmbeddings(
-            model=os.getenv("EMBEDDING_MODEL", "text-embedding-3-large")
+            model=embedding_model,
+            base_url=base_url,
         )
         self.llm = ChatOpenAI(
-            model=os.getenv("CHAT_MODEL", "gpt-4.1-mini"),
+            model=chat_model,
             temperature=0.1,
+            base_url=base_url,
         )
 
         self.vector_store = self._build_or_load_vectorstore()
@@ -57,9 +73,6 @@ class RagService:
         Supported formats:
         - .txt using TextLoader
         - .pdf using PyPDFLoader
-
-        This can later be extended to other loaders
-        (e.g., GCS, Confluence, Notion, etc.).
         """
         docs: List[Document] = []
 
@@ -86,7 +99,6 @@ class RagService:
         # Normalize source metadata
         for d in docs:
             if "source" not in d.metadata:
-                # DirectoryLoader は file_path を metadata に入れてくれることが多い
                 d.metadata["source"] = d.metadata.get("file_path", "local")
         return docs
 
@@ -107,9 +119,6 @@ class RagService:
         """
         Load FAISS index from disk if present.
         Otherwise, build it from documents and save it.
-
-        When deployed on TrueFoundry, this directory
-        can be backed by a Persistent Volume.
         """
         path = Path(FAISS_DIR)
         if path.exists():
@@ -176,4 +185,3 @@ class RagService:
             "answer": completion.content,
             "documents": docs,
         }
-
